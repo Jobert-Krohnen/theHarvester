@@ -17,7 +17,6 @@ from theHarvester.discovery import (
     anubis,
     baidusearch,
     bevigil,
-    binaryedgesearch,
     bingsearch,
     bravesearch,
     bufferoverun,
@@ -49,7 +48,9 @@ from theHarvester.discovery import (
     threatminer,
     tombasearch,
     urlscan,
+    venacussearch,
     virustotal,
+    whoisxml,
     yahoosearch,
     zoomeyesearch,
 )
@@ -147,14 +148,14 @@ async def start(rest_args: argparse.Namespace | None = None):
     parser.add_argument(
         '-b',
         '--source',
-        help="""anubis, baidu, bevigil, binaryedge, bing, bingapi, brave, bufferoverun,
+        help="""anubis, baidu, bevigil, bing, bingapi, brave, bufferoverun,
                             censys, certspotter, criminalip, crtsh, duckduckgo, fullhunt, github-code,
                             hackertarget, hunter, hunterhow, intelx, netlas, onyphe, otx, pentesttools, projectdiscovery,
                             rapiddns, rocketreach, securityTrails, sitedossier, subdomaincenter, subdomainfinderc99, threatminer, tomba,
-                            urlscan, virustotal, yahoo, zoomeye""",
+                            urlscan, virustotal, yahoo, whoisxml, zoomeye, venacus""",
     )
 
-    # determines if filename is coming from rest api or user
+    # determines if the filename is coming from rest api or user
     rest_filename = ''
     # indicates this from the rest API
     if rest_args:
@@ -185,6 +186,7 @@ async def start(rest_args: argparse.Namespace | None = None):
     all_emails: list = []
     all_hosts: list = []
     all_ip: list = []
+    all_people: list[dict[str, str]] = []
     dnslookup = args.dns_lookup
     dnsserver = args.dns_server  # TODO arg is not used anywhere replace with resolvers wordlist arg dnsresolve
     dnsresolve = args.dns_resolve
@@ -337,6 +339,7 @@ async def start(rest_args: argparse.Namespace | None = None):
 
         if store_people:
             people_list = await search_engine.get_people()
+            all_people.extend(people_list)
             await db_stash.store_all(word, people_list, 'people', source)
 
         if store_links:
@@ -400,13 +403,6 @@ async def start(rest_args: argparse.Namespace | None = None):
                                 store_interestingurls=True,
                             )
                         )
-                    except Exception as e:
-                        print(e)
-
-                elif engineitem == 'binaryedge':
-                    try:
-                        binaryedge_search = binaryedgesearch.SearchBinaryEdge(word, limit)
-                        stor_lst.append(store(binaryedge_search, engineitem, store_host=True))
                     except Exception as e:
                         print(e)
 
@@ -661,7 +657,7 @@ async def start(rest_args: argparse.Namespace | None = None):
                 elif engineitem == 'rocketreach':
                     try:
                         rocketreach_search = rocketreach.SearchRocketReach(word, limit)
-                        stor_lst.append(store(rocketreach_search, engineitem, store_links=True))
+                        stor_lst.append(store(rocketreach_search, engineitem, store_links=True, store_emails=True))
                     except Exception as e:
                         if isinstance(e, MissingKey):
                             print(e)
@@ -760,6 +756,16 @@ async def start(rest_args: argparse.Namespace | None = None):
                         if isinstance(e, MissingKey):
                             print(e)
 
+                elif engineitem == 'whoisxml':
+                    try:
+                        whoisxml_search = whoisxml.SearchWhoisXML(word)
+                        stor_lst.append(store(whoisxml_search, engineitem, store_host=True))
+                    except Exception as e:
+                        if isinstance(e, MissingKey):
+                            print(e)
+                        else:
+                            print(f'An exception has occurred in WhoisXML search: {e}')
+
                 elif engineitem == 'yahoo':
                     try:
                         yahoo_search = yahoosearch.SearchYahoo(word, limit)
@@ -791,6 +797,25 @@ async def start(rest_args: argparse.Namespace | None = None):
                     except Exception as e:
                         if isinstance(e, MissingKey):
                             print(e)
+
+                elif engineitem == 'venacus':
+                    try:
+                        venacus_search = venacussearch.SearchVenacus(word=word, limit=limit, offset_doc=start)
+                        stor_lst.append(
+                            store(
+                                venacus_search,
+                                engineitem,
+                                store_emails=True,
+                                store_ip=True,
+                                store_people=True,
+                                store_interestingurls=True,
+                            )
+                        )
+                    except Exception as e:
+                        if isinstance(e, MissingKey):
+                            print(e)
+                        else:
+                            print(f'An exception has occurred in venacus search: {e}')
         else:
             if rest_args is not None:
                 try:
@@ -802,7 +827,7 @@ async def start(rest_args: argparse.Namespace | None = None):
                 # Print which engines aren't supported
                 unsupported_engines = set(engines) - set(Core.get_supportedengines())
                 if unsupported_engines:
-                    print(f"The following engines are not supported: {unsupported_engines}")
+                    print(f'The following engines are not supported: {unsupported_engines}')
                 print('\n[!] Invalid source.\n')
                 sys.exit(1)
 
@@ -951,6 +976,14 @@ async def start(rest_args: argparse.Namespace | None = None):
         print('----------------------')
         all_emails = sorted(list(set(all_emails)))
         print('\n'.join(all_emails))
+
+    if len(all_people) == 0:
+        print('\n[*] No people found.')
+    else:
+        print('\n[*] People found: ' + str(len(all_people)))
+        print('----------------------')
+        for person in all_people:
+            print(person)
 
     if len(all_hosts) == 0:
         print('\n[*] No hosts found.\n\n')
@@ -1230,6 +1263,9 @@ async def start(rest_args: argparse.Namespace | None = None):
 
             if len(linkedin_links_tracker) > 0:
                 json_dict['linkedin_links'] = linkedin_links_tracker
+
+            if len(all_people) > 0:
+                json_dict['people'] = all_people
 
             if takeover_status and len(takeover_results) > 0:
                 json_dict['takeover_results'] = takeover_results

@@ -2,9 +2,6 @@ apikeys:
   bevigil:
     key:
 
-  binaryedge:
-    key:
-
   bing:
     key:
 
@@ -61,5 +58,11 @@ apikeys:
   virustotal:
     key:
 
+  whoisxml:
+    key:
+
   zoomeye:
+    key:
+  
+  venacus:
     key:
